@@ -20,3 +20,23 @@ fn main() {
   println!("Result: {}", *counter.lock().unwrap());
 
 }
+use std::{
+    sync::{
+        mpsc,
+        Arc,
+        Mutex,
+    },
+    thread,
+};
+
+type Job = Box<dyn FnOnce() + Send + 'static>;
+
+struct Worker {
+    id: usize,
+    thread: thread::JoinHandle<()>,
+}
+
+struct ThreadPool {
+    workers: Vec<Worker>,
+    sender: mpsc::Sender<Job>,
+}
