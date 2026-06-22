@@ -1,42 +1,23 @@
-use std::sync::{Arc , Mutex};
+use std::sync::mpsc;
 use std::thread;
+
 fn main() {
-  let counter = Arc::new(Mutex::new(0));
-  let mut handles = vec![];
-  
-  for _ in 0..11 {
-    let counter = Arc::clone(&counter);
-    let handle = thread::spawn(move ||{
-        let mut num = counter.lock().unwrap();
-        *num +=1;
+    let (tx, rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        loop {
+            match rx.recv() {
+              Ok(message) => println!("Recieved: {}", message),
+              Err(_) =>{
+                println!("Channel Closed");
+                break;
+              }
+            }
+        }
     });
-    handles.push(handle);
-  }
-
-  for handle in handles {
+    tx.send("Job 1").unwrap();
+    tx.send("Job 2").unwrap();
+    tx.send("Job 3").unwrap();
+    
+    drop(tx);
     handle.join().unwrap();
-
-  }
-  println!("Result: {}", *counter.lock().unwrap());
-
-}
-use std::{
-    sync::{
-        mpsc,
-        Arc,
-        Mutex,
-    },
-    thread,
-};
-
-type Job = Box<dyn FnOnce() + Send + 'static>;
-
-struct Worker {
-    id: usize,
-    thread: thread::JoinHandle<()>,
-}
-
-struct ThreadPool {
-    workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
 }
