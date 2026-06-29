@@ -15,6 +15,7 @@ public:
   std::thread thread_;
   std::deque<Job> deque_;
   std::mutex mutex_;
+  std::condition_variable cv_;
 };
 
 class ThreadPool {
@@ -28,24 +29,28 @@ public:
     // initializing the vector of workers
     for (size_t i = 0; i < n; i++) {
       workers.emplace_back(std::make_unique<Worker>());
-      workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
     }
     // calling the worker function for each worker
-    /* for (int i = 0; i < n; i++) {
-       workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
-     }*/
+    for (int i = 0; i < n; i++) {
+      workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
+    }
   }
   void worker(size_t id) {
     // grab current worker
     Worker &currentWorker = *workers[id];
 
     // run till the end of life of the threadpool
-    while (!stop_) {
+    while (true) {
       std::unique_lock<std::mutex> lock(currentWorker.mutex_);
 
       // sleep untill the pool is stopping or the deque has atleast one job
-      cv_.wait(lock, [&] { return stop_ || !currentWorker.deque_.empty(); });
+      currentWorker.cv_.wait(
+          lock, [&] { return stop_ || !currentWorker.deque_.empty(); });
 
+      // check for
+      if (stop_ && currentWorker.deque_.empty()) {
+        return;
+      }
       Job job = std::move(currentWorker.deque_.back());
       currentWorker.deque_.pop_back();
 
@@ -57,11 +62,12 @@ public:
 
   ~ThreadPool() {
     stop_ = true;
-    cv_.notify_all();
-
-    for (int i = 0; i < workers.size(); i++) {
-      if (workers[i]->thread_.joinable()) {
-        workers[i]->thread_.join();
+    for (auto &worker : workers) {
+      worker->cv_.notify_all();
+    }
+    for (auto &worker : workers) {
+      if (worker->thread_.joinable()) {
+        worker->thread_.join();
       }
     }
   };
@@ -78,7 +84,7 @@ public:
       std::lock_guard<std::mutex> lock(currentWorker.mutex_);
       currentWorker.deque_.push_back(std::move(job));
     }
-    cv_.notify_one();
+    currentWorker.cv_.notify_one();
   };
 };
 
