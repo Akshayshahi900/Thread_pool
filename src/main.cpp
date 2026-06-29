@@ -1,25 +1,57 @@
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <iostream>
 #include <mutex>
-#include <queue>
 #include <thread>
 
 struct Job {
   std::function<void()> task;
 };
+
 class Worker {
+public:
   std::thread thread_;
-  std::deque<Job> deque;
+  std::deque<Job> deque_;
   std::mutex mutex_;
-  std::atomic<bool> stop_;
 };
+
 class ThreadPool {
 public:
-  ThreadPool(size_t thread_count) {
-    for (size_t i = 0; i < thread_count; i++) {
-      workers_.emplace_back(&ThreadPool::worker, this);
+  std::vector<std::unique_ptr<Worker>> workers;
+  std::condition_variable cv_;
+  std::atomic<bool> stop_{false};
+  std::atomic<size_t> next_worker_{0};
+
+  ThreadPool(size_t n) {
+    // initializing the vector of workers
+    for (size_t i = 0; i < n; i++) {
+      workers.emplace_back(std::make_unique<Worker>());
+      workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
+    }
+    // calling the worker function for each worker
+    /* for (int i = 0; i < n; i++) {
+       workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
+     }*/
+  }
+  void worker(size_t id) {
+    // grab current worker
+    Worker &currentWorker = *workers[id];
+
+    // run till the end of life of the threadpool
+    while (!stop_) {
+      std::unique_lock<std::mutex> lock(currentWorker.mutex_);
+
+      // sleep untill the pool is stopping or the deque has atleast one job
+      cv_.wait(lock, [&] { return stop_ || !currentWorker.deque_.empty(); });
+
+      Job job = std::move(currentWorker.deque_.back());
+      currentWorker.deque_.pop_back();
+
+      lock.unlock();
+
+      job.task();
     }
   }
 
@@ -27,52 +59,36 @@ public:
     stop_ = true;
     cv_.notify_all();
 
-    for (auto &thread : workers_) {
-      if (thread.joinable())
-        thread.join();
+    for (int i = 0; i < workers.size(); i++) {
+      if (workers[i]->thread_.joinable()) {
+        workers[i]->thread_.join();
+      }
     }
   };
-
   void enqueue(std::function<void()> task) {
+    Job job;
+    job.task = std::move(task);
+
+    // choose worker
+    size_t id = next_worker_++ % workers.size();
+    Worker &currentWorker = *workers[id];
+
+    // scope it and take the lock and push the job into the queue
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      tasks_.push(std::move(task));
+      std::lock_guard<std::mutex> lock(currentWorker.mutex_);
+      currentWorker.deque_.push_back(std::move(job));
     }
     cv_.notify_one();
-  }
-
-private:
-  void worker() {
-    while (true) {
-      std::function<void()> task;
-      {
-        std::unique_lock<std::mutex> lock(mutex_);
-        cv_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
-        if (stop_ && tasks_.empty())
-          return;
-        task = std::move(tasks_.front());
-        tasks_.pop();
-      }
-      task();
-    }
-  }
-
-private:
-  std::vector<std::thread> workers_;
-  // std::queue<std::function<void()>> tasks_;
-  // std::mutex mutex_;
-  // std::condition_variable cv_;
-  std::atomic<bool> stop_{false};
+  };
 };
 
 int main() {
   ThreadPool pool(10);
   for (int i = 1; i <= 10; i++) {
     pool.enqueue([i] {
-      std::cout << "Task" << i << " executed by thread "
-                << std::this_thread::get_id() << '\n';
+      std::cout << "Task" << i << "executed by thread "
+                << "id :" << std::this_thread::get_id() << "\n\n";
     });
   }
-
   return 0;
 }
