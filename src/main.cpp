@@ -126,12 +126,14 @@ public:
 };
 
 int main() {
-  ThreadPool pool(10);
-  for (int i = 1; i <= 10; i++) {
-    pool.enqueue([i] {
-      std::cout << "Task" << i << "executed by thread "
-                << "id :" << std::this_thread::get_id() << "\n\n";
-    });
+
+  std::atomic<int> counter = 0;
+  {
+    ThreadPool pool(10);
+    for (int i = 1; i <= 1000000; i++) {
+      pool.enqueue([&] { counter.fetch_add(1, std::memory_order_relaxed); });
+    }
   }
+  std::cout << counter << '\n';
   return 0;
 }
