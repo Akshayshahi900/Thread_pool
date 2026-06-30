@@ -35,28 +35,65 @@ public:
       workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
     }
   }
+
+  bool pop_local(size_t id, Job &job) {
+    Worker &worker = *workers[id];
+    std::lock_guard<std::mutex> lock(worker.mutex_);
+
+    if (worker.deque_.empty()) {
+      return false;
+    }
+
+    job = std::move(worker.deque_.back());
+    worker.deque_.pop_back();
+
+    return true;
+  }
+
+  bool stealJob(size_t id, Job &job) {
+    for (size_t i = 0; i < workers.size(); i++) {
+      if (id == i) {
+        continue;
+      }
+
+      Worker &target = *workers[i];
+
+      std::lock_guard<std::mutex> lock(target.mutex_);
+
+      if (!target.deque_.empty()) {
+        job = std::move(target.deque_.front());
+
+        target.deque_.pop_front();
+        return true;
+      }
+    }
+    return false;
+  }
+
   void worker(size_t id) {
     // grab current worker
     Worker &currentWorker = *workers[id];
 
     // run till the end of life of the threadpool
     while (true) {
-      std::unique_lock<std::mutex> lock(currentWorker.mutex_);
+      Job job;
 
-      // sleep untill the pool is stopping or the deque has atleast one job
-      currentWorker.cv_.wait(
-          lock, [&] { return stop_ || !currentWorker.deque_.empty(); });
+      if (pop_local(id, job)) {
+        job.task();
+        continue;
+      }
+      if (stealJob(id, job)) {
+        job.task();
+        continue;
+      }
 
-      // check for
-      if (stop_ && currentWorker.deque_.empty()) {
+      Worker &current = *workers[id];
+      std::unique_lock<std::mutex> lock(current.mutex_);
+      current.cv_.wait(lock, [&] { return stop_ || !current.deque_.empty(); });
+
+      if (stop_ && current.deque_.empty()) {
         return;
       }
-      Job job = std::move(currentWorker.deque_.back());
-      currentWorker.deque_.pop_back();
-
-      lock.unlock();
-
-      job.task();
     }
   }
 
