@@ -58,13 +58,16 @@ public:
 
       Worker &target = *workers[i];
 
-      std::lock_guard<std::mutex> lock(target.mutex_);
+      std::unique_lock<std::mutex> lock(target.mutex_, std::try_to_lock);
 
-      if (!target.deque_.empty()) {
-        job = std::move(target.deque_.front());
+      if (lock.owns_lock()) {
 
-        target.deque_.pop_front();
-        return true;
+        if (!target.deque_.empty()) {
+          job = std::move(target.deque_.front());
+
+          target.deque_.pop_front();
+          return true;
+        }
       }
     }
     return false;
