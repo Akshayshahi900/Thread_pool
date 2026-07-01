@@ -1,11 +1,12 @@
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <deque>
 #include <functional>
 #include <iostream>
 #include <mutex>
+#include <random>
 #include <thread>
-
 struct Job {
   std::function<void()> task;
 };
@@ -51,23 +52,30 @@ public:
   }
 
   bool stealJob(size_t id, Job &job) {
-    for (size_t i = 0; i < workers.size(); i++) {
-      if (id == i) {
+    thread_local std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<size_t> dist(0, workers.size() - 1);
+
+    size_t start = dist(rng);
+
+    for (size_t k = 0; k < workers.size(); k++) {
+      size_t victim = (start + k) % workers.size();
+
+      if (victim == id) {
         continue;
       }
 
-      Worker &target = *workers[i];
+      Worker &target = *workers[victim];
 
       std::unique_lock<std::mutex> lock(target.mutex_, std::try_to_lock);
 
-      if (lock.owns_lock()) {
+      if (!lock.owns_lock())
+        continue;
 
-        if (!target.deque_.empty()) {
-          job = std::move(target.deque_.front());
+      if (!target.deque_.empty()) {
+        job = std::move(target.deque_.front());
 
-          target.deque_.pop_front();
-          return true;
-        }
+        target.deque_.pop_front();
+        return true;
       }
     }
     return false;
