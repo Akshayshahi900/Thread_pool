@@ -32,7 +32,7 @@ public:
       workers.emplace_back(std::make_unique<Worker>());
     }
     // calling the worker function for each worker
-    for (int i = 0; i < n; i++) {
+    for (size_t i = 0; i < n; i++) {
       workers[i]->thread_ = std::thread(&ThreadPool::worker, this, i);
     }
   }
@@ -83,7 +83,6 @@ public:
 
   void worker(size_t id) {
     // grab current worker
-    Worker &currentWorker = *workers[id];
 
     // run till the end of life of the threadpool
     while (true) {
