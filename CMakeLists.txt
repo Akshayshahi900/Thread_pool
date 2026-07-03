@@ -20,6 +20,12 @@ target_compile_options(server PRIVATE
     -Wextra
     -Wpedantic
     -g
-)
+    -O1
+    -fsanitize=thread
+  )
 
 target_link_libraries(server PRIVATE pthread)
+
+target_link_options(server PRIVATE 
+  -fsanitize=thread
+)

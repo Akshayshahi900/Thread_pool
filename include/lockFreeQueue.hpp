@@ -38,8 +38,8 @@ std::optional<T> LockFreeDeque<T, capacity>::steal_top() {
       return std::nullopt;
     }
 
-    T task = buffer_[t % capacity];
-    if (top_.compare_exchange_strong(t, t + 1, std::memory_order_acquire,
+    T task = (buffer_[t % capacity]);
+    if (top_.compare_exchange_strong(t, t + 1, std::memory_order_acq_rel,
                                      std::memory_order_relaxed)) {
       return task;
     }
@@ -62,7 +62,7 @@ std::optional<T> LockFreeDeque<T, capacity>::pop_bottom() {
     return std::nullopt;
   }
 
-  T task = buffer_[b % capacity];
+  T task = std::move(buffer_[b % capacity]);
   if (t == b) {
     if (!top_.compare_exchange_strong(t, t + 1, std::memory_order_acq_rel,
                                       std::memory_order_relaxed)) {

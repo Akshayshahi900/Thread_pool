@@ -6,21 +6,18 @@
 
 int main() {
   ThreadPool pool(4);
-  /*
-    std::atomic<int> counter{0};
 
-    constexpr int tasks = 1000;
+  std::atomic<int> counter{0};
 
-    for (int i = 0; i < tasks; i++) {
-      pool.enqueue(
-          [&counter] { counter.fetch_add(1, std::memory_order_relaxed); });
-    }
+  constexpr int tasks = 1000;
 
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+  for (int i = 0; i < tasks; i++) {
+    pool.enqueue(
+        [&counter] { counter.fetch_add(1, std::memory_order_relaxed); });
+  }
 
-    std::cout << "Counter = " << counter << '\n';
-  */
+  std::this_thread::sleep_for(std::chrono::seconds(1));
 
-  pool.enqueue([] { std::cout << "Hello\n"; });
-  pool.enqueue([] { std::cout << "World\n"; });
+  std::cout << "Counter = " << counter << '\n';
+  return 0;
 }
