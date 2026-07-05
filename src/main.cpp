@@ -3,10 +3,15 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <future>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <thread>
+#include <type_traits>
+#include <utility>
+
 struct Job {
   std::function<void()> task;
 };
@@ -133,17 +138,25 @@ public:
     }
     currentWorker.cv_.notify_one();
   };
+  template <typename F> auto submit(F &&func) {
+    using ReturnType = std::invoke_result_t<F>;
+
+    auto task = std::make_shared<std::packaged_task<ReturnType()>>(
+        std::forward<F>(func));
+
+    auto future = task->get_future();
+
+    enqueue([task] { (*task)(); });
+
+    return future;
+  }
 };
 
 int main() {
 
-  std::atomic<int> counter = 0;
-  {
-    ThreadPool pool(10);
-    for (int i = 1; i <= 1000000; i++) {
-      pool.enqueue([&] { counter.fetch_add(1, std::memory_order_relaxed); });
-    }
-  }
-  std::cout << counter << '\n';
-  return 0;
+  ThreadPool pool(5);
+
+  auto future = pool.submit([] { return 43; });
+
+  std::cout << future.get() << '\n';
 }
