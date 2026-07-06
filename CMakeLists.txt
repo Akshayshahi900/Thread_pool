@@ -71,3 +71,74 @@ foreach(test ${TESTS})
     add_test(NAME ${test} COMMAND ${test})
 
 endforeach()
+
+
+# ---------------------------------------------------------
+# Google Benchmark
+# ---------------------------------------------------------
+
+include(FetchContent)
+
+FetchContent_Declare(
+    benchmark
+    URL https://github.com/google/benchmark/archive/refs/tags/v1.8.1.zip
+)
+
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(benchmark)
+
+# ---------------------------------------------------------
+# Benchmarks
+# ---------------------------------------------------------
+
+set(BENCHMARKS
+    enqueue_bench
+    submit_bench
+    cpu_bench
+)
+
+foreach(bench ${BENCHMARKS})
+
+    add_executable(${bench}
+        bench/${bench}.cpp
+        src/threadPool.cpp
+    )
+
+    target_include_directories(${bench} PRIVATE include)
+
+    target_compile_options(${bench} PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+        -O3
+    )
+
+    target_link_libraries(${bench} PRIVATE
+        benchmark::benchmark
+        pthread
+    )
+
+endforeach()
+
+# ---------------------------------------------------------
+# std::async Benchmark
+# (Doesn't use the thread pool implementation)
+# ---------------------------------------------------------
+
+add_executable(async_bench
+    bench/async_bench.cpp
+)
+
+target_compile_options(async_bench PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -O3
+)
+
+target_link_libraries(async_bench PRIVATE
+    benchmark::benchmark
+    pthread
+)
