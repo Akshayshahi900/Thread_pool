@@ -37,10 +37,10 @@ std::optional<T> LockFreeDeque<T, capacity>::steal_top() {
     if (t >= b) {
       return std::nullopt;
     }
-
-    T task = (buffer_[t % capacity]);
+    // Attempt to claim ownership via CAS then safely read the buffer
     if (top_.compare_exchange_strong(t, t + 1, std::memory_order_acq_rel,
                                      std::memory_order_relaxed)) {
+      T task = (buffer_[t % capacity]);
       return task;
     }
   }
@@ -52,8 +52,9 @@ std::optional<T> LockFreeDeque<T, capacity>::pop_bottom() {
 
   if (b == 0)
     return std::nullopt;
+
   b--;
-  bottom_.store(b, std::memory_order_relaxed);
+  bottom_.store(b, std::memory_order_release);
 
   size_t t = top_.load(std::memory_order_acquire);
 
@@ -62,15 +63,21 @@ std::optional<T> LockFreeDeque<T, capacity>::pop_bottom() {
     return std::nullopt;
   }
 
-  T task = std::move(buffer_[b % capacity]);
-  if (t == b) {
-    if (!top_.compare_exchange_strong(t, t + 1, std::memory_order_acq_rel,
-                                      std::memory_order_relaxed)) {
-      bottom_.store(t + 1, std::memory_order_relaxed);
-      return std::nullopt;
-    }
-    bottom_.store(t + 1, std::memory_order_relaxed);
+  if (t < b) {
+    // Safe: more than one element, stealer can't touch this slot
+    T task = std::move(buffer_[b % capacity]);
+    return task;
   }
+
+  // t == b: last element, contend with stealers BEFORE reading
+  if (!top_.compare_exchange_strong(t, t + 1, std::memory_order_acq_rel,
+                                    std::memory_order_relaxed)) {
+    return std::nullopt; // Lost race, don't touch buffer
+  }
+
+  // Only read AFTER winning the CAS
+  T task = std::move(buffer_[b % capacity]);
+  bottom_.store(t + 1, std::memory_order_relaxed);
   return task;
 }
 

@@ -32,8 +32,10 @@ void ThreadPool::enqueue(std::function<void()> task) {
   size_t id =
       next_worker_.fetch_add(1, std::memory_order_relaxed) % workers.size();
   Worker &currentWorker = *workers[id];
-
-  currentWorker.deque_.push_bottom(std::move(job));
+  {
+    std::lock_guard<std::mutex> lock(currentWorker.push_mutex_);
+    currentWorker.deque_.push_bottom(std::move(job));
+  }
   currentWorker.cv_.notify_one();
 };
 

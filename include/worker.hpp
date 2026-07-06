@@ -10,4 +10,5 @@ public:
   LockFreeDeque<Job> deque_;
   std::mutex sleep_mutex;
   std::condition_variable cv_;
+  std::mutex push_mutex_;
 };
